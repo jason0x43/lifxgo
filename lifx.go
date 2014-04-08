@@ -7,7 +7,7 @@ import "flag"
 import "io/ioutil"
 
 func main() {
-    var verbose = flag.Bool("verbose", false, "Be verbose");
+	var verbose = flag.Bool("verbose", false, "Be verbose")
 	flag.Parse()
 
 	if !*verbose {
@@ -16,12 +16,12 @@ func main() {
 
 	gateways, err := lifx.DiscoverGateways(false)
 	if err != nil {
-		fmt.Print("ERROR:", err);
+		fmt.Print("ERROR:", err)
 		return
 	}
 
 	gateway := gateways[0]
-	fmt.Println("Found gateway at", gateway.Address);
+	fmt.Println("Found gateway at", gateway.Address)
 
 	err = gateway.Dial()
 	if err == nil {
@@ -39,13 +39,13 @@ func main() {
 		fmt.Print("> ")
 		fmt.Scan(&cmd)
 
-		switch (cmd) {
-			case "on":
-				fmt.Println("Turning", lights[0], "on...")
-				err = lights[0].SetPower(50)
-			case "off":
-				fmt.Println("Turning", lights[0], "off...")
-				err = lights[0].SetPower(0)
+		switch cmd {
+		case "on":
+			fmt.Println("Turning", lights[0], "on...")
+			err = lights[0].SetPower(50)
+		case "off":
+			fmt.Println("Turning", lights[0], "off...")
+			err = lights[0].SetPower(0)
 		}
 
 		if err != nil {

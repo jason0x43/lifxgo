@@ -7,37 +7,37 @@ import "bytes"
 import "encoding/hex"
 
 const (
-	TCP_MAX_ATTEMPTS int = 3
-	SERVICE_UDP byte = 1
-	SERVICE_TCP byte = 2
+	TCP_MAX_ATTEMPTS int  = 3
+	SERVICE_UDP      byte = 1
+	SERVICE_TCP      byte = 2
 )
 
 type Gateway struct {
-	Site [6]byte
-	Id string
-	Lights map[string]*Light
-	Protocol byte
-	Address string
+	Site      [6]byte
+	Id        string
+	Lights    map[string]*Light
+	Protocol  byte
+	Address   string
 	transport net.Conn
-	readBuf []byte
-	writeBuf *bytes.Buffer
+	readBuf   []byte
+	writeBuf  *bytes.Buffer
 }
 
 func NewGateway(address string, site [6]byte, protocol byte) *Gateway {
 	id := hex.EncodeToString(site[:])
 	return &Gateway{
-		Site: site,
-		Id: id,
+		Site:     site,
+		Id:       id,
 		Protocol: protocol,
-		Lights: make(map[string]*Light, 0),
-		Address: address,
-		readBuf: make([]byte, 2048),
+		Lights:   make(map[string]*Light, 0),
+		Address:  address,
+		readBuf:  make([]byte, 2048),
 		writeBuf: new(bytes.Buffer),
 	}
 }
 
 func (gateway *Gateway) dial(netw string) error {
-	transport, err := net.DialTimeout(netw, gateway.Address, 10 * time.Second)
+	transport, err := net.DialTimeout(netw, gateway.Address, 10*time.Second)
 	if err == nil {
 		gateway.transport = transport
 	}
