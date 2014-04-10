@@ -2,7 +2,6 @@ package lifx
 
 import "fmt"
 import "bytes"
-import "errors"
 import "encoding/binary"
 
 type header struct {
@@ -18,55 +17,56 @@ type header struct {
 	Reserved4   [2]byte
 }
 
-func (item *header) init() *header {
-	item.Protocol = 13312
-	item.Size = 36
-	return item
-}
-
-type payload interface{}
-
 type Message struct {
-	Header  *header
-	Payload payload
+	header
+	Payload interface{}
 }
 
-func (message *Message) String() string {
-	return fmt.Sprintf("<<%T:%+v %T:%+v>>", message.Header, message.Header, message.Payload, message.Payload)
+func (m *Message) String() string {
+	return fmt.Sprintf("{Message %d}", m.PacketType)
+}
+
+func NewMessage(typeId uint16) (*Message, error) {
+	var message Message
+	message.Protocol = 13312
+	message.Size = uint16(binary.Size(message.header))
+	message.PacketType = typeId
+
+	payload, err := typeToPayload(typeId)
+	if err != nil {
+		return nil, err
+	}
+
+	message.Payload = payload
+	message.Size += (uint16)(binary.Size(payload))
+
+	return &message, nil
 }
 
 func DecodeMessage(buf *bytes.Buffer) (*Message, error) {
-	header := new(header).init()
-	binary.Read(buf, binary.LittleEndian, header)
-	payload, err := decodePayload(header.PacketType, buf)
+	var message Message
+	binary.Read(buf, binary.LittleEndian, &message.header)
+
+	payload, err := decodePayload(message.PacketType, buf)
 	if err != nil {
 		return nil, err
 	}
-	header.Size += (uint16)(binary.Size(payload))
-	return &Message{header, payload}, nil
+
+	message.Size += (uint16)(binary.Size(payload))
+	message.Payload = payload
+
+	return &message, nil
 }
 
 func EncodeMessage(message *Message, buf *bytes.Buffer) error {
-	err := binary.Write(buf, binary.LittleEndian, message.Header)
+	err := binary.Write(buf, binary.LittleEndian, message.header)
 	if err != nil {
 		return err
 	}
-	err = binary.Write(buf, binary.LittleEndian, message.Payload)
-	return err
+	return binary.Write(buf, binary.LittleEndian, message.Payload)
 }
 
-func CreateMessage(typeId uint16) (*Message, error) {
-	header := new(header).init()
-	header.PacketType = typeId
-	payload, err := selectPayload(typeId)
-	if err != nil {
-		return nil, err
-	}
-	header.Size += (uint16)(binary.Size(payload))
-	return &Message{header, payload}, nil
-}
-
-func selectPayload(typeId uint16) (payload, error) {
+func typeToPayload(typeId uint16) (interface{}, error) {
 	switch typeId {
 	// device
 	case MSG_SET_SITE:
@@ -139,7 +139,8 @@ func selectPayload(typeId uint16) (payload, error) {
 		return new(StateMcuRailVoltage), nil
 	case MSG_REBOOT:
 		return new(Reboot), nil
-	// light, nil
+
+	// light
 	case MSG_LIGHT_GET:
 		return new(LightGet), nil
 	case MSG_LIGHT_SET:
@@ -162,7 +163,8 @@ func selectPayload(typeId uint16) (payload, error) {
 		return new(GetTemperature), nil
 	case MSG_STATE_TEMPERATURE:
 		return new(StateTemperature), nil
-	// wan, nil
+
+	// wan
 	case MSG_CONNECT_PLAIN:
 		return new(ConnectPlain), nil
 	case MSG_CONNECT_KEY:
@@ -175,7 +177,8 @@ func selectPayload(typeId uint16) (payload, error) {
 		return new(Unsub), nil
 	case MSG_STATE_SUB:
 		return new(StateSub), nil
-	// wifi, nil
+
+	// wifi
 	case MSG_WIFI_GET:
 		return new(WifiGet), nil
 	case MSG_WIFI_SET:
@@ -188,7 +191,8 @@ func selectPayload(typeId uint16) (payload, error) {
 		return new(SetAccessPoint), nil
 	case MSG_STATE_ACCESS_POINT:
 		return new(StateAccessPoint), nil
-	// sensor, nil
+
+	// sensor
 	case MSG_GET_AMBIENT_LIGHT:
 		return new(GetAmbientLight), nil
 	case MSG_STATE_AMBIENT_LIGHT:
@@ -198,14 +202,14 @@ func selectPayload(typeId uint16) (payload, error) {
 	case MSG_STATE_DIMMER_VOLTAGE:
 		return new(StateDimmerVoltage), nil
 	}
-	return nil, errors.New("Invalid type")
+
+	return nil, fmt.Errorf("Invalid type %d", typeId)
 }
 
-func decodePayload(typeId uint16, buf *bytes.Buffer) (payload, error) {
-	payload, err := selectPayload(typeId)
+func decodePayload(typeId uint16, buf *bytes.Buffer) (interface{}, error) {
+	payload, err := typeToPayload(typeId)
 	if err != nil {
 		return nil, err
 	}
-	err = binary.Read(buf, binary.LittleEndian, payload)
-	return payload, err
+	return payload, binary.Read(buf, binary.LittleEndian, payload)
 }

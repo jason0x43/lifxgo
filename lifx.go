@@ -14,6 +14,8 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
+	fmt.Println("Looking for gateways...");
+
 	gateways, err := lifx.DiscoverGateways(false)
 	if err != nil {
 		fmt.Print("ERROR:", err)

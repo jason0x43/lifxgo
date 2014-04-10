@@ -36,28 +36,24 @@ func NewGateway(address string, site [6]byte, protocol byte) *Gateway {
 	}
 }
 
-func (gateway *Gateway) dial(netw string) error {
-	transport, err := net.DialTimeout(netw, gateway.Address, 10*time.Second)
-	if err == nil {
-		gateway.transport = transport
-	}
-	return err
-}
-
 func (gateway *Gateway) Dial() error {
 	var err error
+	var transport net.Conn
 
 	if gateway.Protocol == SERVICE_TCP {
 		log.Print("Establishing TCP connection...")
-		err = gateway.dial("tcp4")
+		transport, err = net.DialTimeout("tcp4", gateway.Address, 10*time.Second)
 	}
 
-	if gateway.transport == nil {
+	if transport == nil {
 		gateway.Protocol = SERVICE_UDP
 		log.Print("Establishing UDP connection...")
-		err = gateway.dial("udp4")
+		transport, err = net.DialTimeout("udp4", gateway.Address, 10*time.Second)
 	}
 
+	if err == nil {
+		gateway.transport = transport
+	}
 	return err
 }
 
@@ -67,21 +63,21 @@ func (gateway *Gateway) send(message *Message) error {
 	return err
 }
 
-func (gateway *Gateway) createMessage(messageType uint16) (*Message, error) {
-	message, err := CreateMessage(messageType)
-	message.Header.Site = gateway.Site
+func (gateway *Gateway) NewMessage(messageType uint16) (*Message, error) {
+	message, err := NewMessage(messageType)
+	message.Site = gateway.Site
 	return message, err
 }
 
 func (gateway *Gateway) RefreshLights() ([]*Light, error) {
-	msg, _ := gateway.createMessage(MSG_LIGHT_GET)
+	msg, _ := gateway.NewMessage(MSG_LIGHT_GET)
 	err := gateway.send(msg)
 	if err != nil {
 		log.Print("ERROR: Error sending state message: ", err)
 		return nil, err
 	}
 
-	gateway.transport.SetReadDeadline(time.Now().Add(2 * time.Second))
+	gateway.transport.SetReadDeadline(time.Now().Add(3 * time.Second))
 	lights := make(map[string]*Light)
 
 	for {
@@ -92,21 +88,21 @@ func (gateway *Gateway) RefreshLights() ([]*Light, error) {
 			}
 			break
 		}
+		log.Print("Received data");
 
 		message, err := DecodeMessage(bytes.NewBuffer(gateway.readBuf))
 		if err != nil {
 			log.Print("ERROR: Error decoding message: ", err)
 			continue
 		}
+		log.Println("Decoded message", message);
 
-		if message.Header.PacketType == MSG_STATE_LIGHT {
+		if message.PacketType == MSG_STATE_LIGHT {
 			light := NewLight(gateway, message)
 			lights[light.Id] = light
 		}
 	}
 
-	var zeroTime time.Time
-	gateway.transport.SetReadDeadline(zeroTime)
 	gateway.Lights = lights
 
 	var lightList []*Light

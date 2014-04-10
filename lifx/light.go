@@ -1,6 +1,8 @@
 package lifx
 
 import "fmt"
+import "log"
+import "time"
 import "bytes"
 import "encoding/hex"
 
@@ -8,37 +10,67 @@ type Light struct {
 	Id      string
 	Site    [6]byte
 	Color   hsbk
+	Label   string
+	seen    time.Time
 	gateway *Gateway
 }
 
 func (light *Light) String() string {
-	return fmt.Sprintf("{%T %s}", light, light.Id)
+	return fmt.Sprintf("{Light %s '%s'}", light.Id, light.Label)
 }
 
 func NewLight(gateway *Gateway, message *Message) *Light {
 	light := Light{gateway: gateway}
-	light.Id = hex.EncodeToString(message.Header.BulbAddress[:])
+	light.Id = hex.EncodeToString(message.BulbAddress[:])
+	light.HandleMessage(message)
+
 	return &light
 }
 
-func (light *Light) createMessage(messageType uint16) (*Message, error) {
-	message, err := light.gateway.createMessage(MSG_SET_POWER)
-	message.Header.BulbAddress = light.Site
-	return message, err
+func (light *Light) NewMessage(messageType uint16) (*Message, error) {
+	message, err := light.gateway.NewMessage(MSG_SET_POWER)
+	if err != nil {
+		return nil, err
+	}
+	message.BulbAddress = light.Site
+	return message, nil
 }
 
 func (light *Light) SetPower(percent float32) error {
 	level := uint16(percent * 0xFFFF)
-	message, _ := light.createMessage(MSG_SET_POWER)
+	log.Println("Setting light level to", level);
+
+	message, err := light.NewMessage(MSG_SET_POWER)
+	if err != nil {
+		return err
+	}
+
 	message.Payload.(*SetPower).Level = level
+	err = light.gateway.send(message)
+	if err != nil {
+		return err
+	}
 
-	light.gateway.send(message)
+	_, err = light.gateway.transport.Read(light.gateway.readBuf)
+	if err != nil {
+		return err
+	}
 
-	_, err := light.gateway.transport.Read(light.gateway.readBuf)
 	message, err = DecodeMessage(bytes.NewBuffer(light.gateway.readBuf))
-	fmt.Println("message:", message)
+	log.Printf("Got message: %#v", message.Payload)
 
 	return err
+}
+
+func (light *Light) HandleMessage(message *Message) {
+	light.seen = time.Now()
+
+	switch message.Payload.(type) {
+	case *StateLight:
+		payload := message.Payload.(*StateLight)
+		light.Color = payload.Color
+		light.Label = string(payload.Label[:])
+	}
 }
 
 const (
@@ -116,6 +148,9 @@ type StateLight struct {
 	Power uint16
 	Label [32]byte
 	Tags  uint64
+}
+func (sl *StateLight) String() string {
+	return fmt.Sprintf("{%T Label='%s', Power=%d}", sl, sl.Label[:], sl.Power)
 }
 
 type GetRailVoltage struct {
